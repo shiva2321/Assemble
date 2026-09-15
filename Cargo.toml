@@ -1,0 +1,35 @@
+[package]
+name = "assemble"
+version = "0.1.0"
+edition = "2021"
+authors = ["Assemble Team"]
+description = "Assemble: The Ultimate AI Agent Assembly Toolkit - Linter, Knowledge Graph, Emulator, Debugger, and Idioms"
+license = "MIT"
+repository = "https://github.com/shiva2321/Assemble.git"
+homepage = "https://github.com/shiva2321/Assemble"
+readme = "README.md"
+keywords = ["assembly", "linter", "x86_64", "arm64", "riscv"]
+categories = ["development-tools", "command-line-utilities", "compilers"]
+
+[lib]
+name = "assemble"
+path = "src/lib.rs"
+
+[[bin]]
+name = "assemble"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "cargo"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+petgraph = { version = "0.7", default-features = true }
+iced-x86 = { version = "1.21", features = ["code_asm", "decoder", "encoder", "instr_info", "gas", "intel", "masm", "nasm"] }
+regex = "1.10"
+colored = "2.1"
+tokio = { version = "1.38", features = ["rt", "rt-multi-thread", "macros", "io-std", "io-util", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.10"
