@@ -1,17 +1,46 @@
-# Assemble
+<div align="center">
 
-<p align="center">
-  <strong>The Complete AI Agent Assembly Engineering Toolkit</strong><br/>
-  <em>Compiler-grade static linter, automated self-healing fixer, dual-mode safety sandbox, production driver scaffolding, and generalized knowledge graph built in Rust.</em>
-</p>
+# ⚡ Assemble
 
-<p align="center">
-  <a href="https://github.com/shiva2321/Assemble"><img src="https://img.shields.io/badge/tests-26%2F26%20passing-success?style=flat-square" alt="Tests"/></a>
-  <a href="https://crates.io/"><img src="https://img.shields.io/badge/rust-1.93%2B-orange?style=flat-square&logo=rust" alt="Rust 1.93+"/></a>
-  <a href="https://github.com/shiva2321/Assemble/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License MIT"/></a>
-  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/interface-MCP%20JSON--RPC%202.0-purple?style=flat-square" alt="MCP Compatible"/></a>
-  <a href="#-architectures-supported"><img src="https://img.shields.io/badge/architectures-x86__64%20%7C%20ARM64%20%7C%20RISC--V-lightgrey?style=flat-square" alt="Architectures"/></a>
-</p>
+### The Complete AI Agent Assembly Engineering Toolkit
+
+[![Build Status](https://img.shields.io/badge/build-passing-2ea44f?style=for-the-badge&logo=github)](https://github.com/shiva2321/Assemble)
+[![Tests Passing](https://img.shields.io/badge/tests-26%20passed-2ea44f?style=for-the-badge&logo=rust)](https://github.com/shiva2321/Assemble)
+[![Rust Version](https://img.shields.io/badge/rustc-1.93%2B-orange?style=for-the-badge&logo=rust)](https://blog.rust-lang.org/)
+[![MCP Ready](https://img.shields.io/badge/MCP-JSON--RPC%202.0-8a2be2?style=for-the-badge)](https://modelcontextprotocol.io/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](https://github.com/shiva2321/Assemble/blob/main/LICENSE)
+
+<br/>
+
+**Compiler-grade static linter · Automated self-healing fixer · Dual-mode safety sandbox**<br/>
+**Bare-metal & driver templates · Step-by-step emulator · Microarchitecture knowledge graph**
+
+<br/>
+
+[Quick Start](#-quick-start) •
+[Core Capabilities](#-key-capabilities--modules) •
+[MCP Integration](#-ai-agent-integration-model-context-protocol) •
+[Templates](#4-production-scaffolding--driver-templates-assemble-template) •
+[Showcases](#-real-world-showcases) •
+[CLI Cheatsheet](#-complete-cli-cheatsheet)
+
+<br/>
+
+</div>
+
+---
+
+### 📋 Technical Specifications
+
+| Parameter | Specification |
+| :--- | :--- |
+| **Language & Toolchain** | Rust 1.93+ (Edition 2021) |
+| **Interfaces** | Native Model Context Protocol (MCP stdio JSON-RPC 2.0) & CLI (`clap` v4) |
+| **Target Architectures** | `x86_64` (Windows x64 & System V AMD64), `ARM64` (AAPCS64), `RISC-V` (LP64 / RV64G) |
+| **Execution Contexts** | `User` (Ring 3 sandboxed), `Kernel` (Ring 0 driver/OS), `BareMetal` (firmware) |
+| **Assembler Backends** | Native `iced-x86` decoder/encoder + optional `nasm` & MSVC `ml64` |
+| **Test Coverage** | 26/26 Cargo Unit & Integration Tests (100%) + 15/15 Assembly Calculator Tests |
+| **License** | [MIT License](LICENSE) |
 
 ---
 
