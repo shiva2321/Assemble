@@ -11,6 +11,6 @@ echo Assembling...
 ml64 /c /W3 /Zd /Zi editor.asm
 
 echo Linking...
-link /subsystem:console /entry:main editor.obj ucrt.lib vcruntime.lib msvcrt.lib legacy_stdio_definitions.lib kernel32.lib user32.lib
+link /subsystem:console editor.obj ucrt.lib vcruntime.lib msvcrt.lib legacy_stdio_definitions.lib kernel32.lib user32.lib
 
 echo Build finished.

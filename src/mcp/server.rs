@@ -7,7 +7,8 @@ use crate::assembler::{assemble, disassemble};
 use crate::emulator::StepTracer;
 use crate::fixer::AssemblyAutoFixer;
 use crate::safety::SafetyGuardrails;
-use crate::types::{Arch, CallingConvention, Syntax};
+use crate::templates;
+use crate::types::{Arch, CallingConvention, ExecutionMode, Syntax};
 use std::str::FromStr;
 
 #[allow(dead_code)]
@@ -101,13 +102,36 @@ pub async fn run_mcp_server() -> Result<(), Box<dyn std::error::Error>> {
                             },
                             {
                                 "name": "asm_audit_safety",
-                                "description": "Scans assembly code for safety guardrails: privileged Ring 0 instructions (cli, hlt, wrmsr), NOP sleds, large unprobed stack frames, and div/0 hazards.",
+                                "description": "Scans assembly code for safety guardrails: privileged Ring 0 instructions (cli, hlt, wrmsr), NOP sleds, large unprobed stack frames, div/0 hazards, and driver-level interrupt/spinlock hazards.",
                                 "inputSchema": {
                                     "type": "object",
                                     "properties": {
-                                        "code": { "type": "string", "description": "The assembly code to audit for safety" }
+                                        "code": { "type": "string", "description": "The assembly code to audit for safety" },
+                                        "mode": { "type": "string", "description": "Execution context mode: 'user', 'kernel', or 'baremetal' (default: 'user')" }
                                     },
                                     "required": ["code"]
+                                }
+                            },
+                            {
+                                "name": "asm_assemble",
+                                "description": "Assembles x86_64 assembly code into machine code bytes and returns hex representation and length.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": { "type": "string", "description": "The assembly code to assemble into machine code" }
+                                    },
+                                    "required": ["code"]
+                                }
+                            },
+                            {
+                                "name": "asm_template",
+                                "description": "Fetches battle-tested assembly scaffolding templates for bare-metal drivers, kernel ISRs, atomic spinlocks, 128-bit bignum arithmetic, and zero-CRT CLI apps.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": { "type": "string", "description": "Template name ('baremetal-uart', 'kernel-isr', 'spinlock', 'bignum-math', 'standalone-cli') or 'list'" }
+                                    },
+                                    "required": ["name"]
                                 }
                             },
                             {
@@ -219,7 +243,9 @@ pub async fn run_mcp_server() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         "asm_audit_safety" => {
                             let code = arguments.get("code").and_then(|v| v.as_str()).unwrap_or("");
-                            let report = safety_guard.audit(code);
+                            let mode_str = arguments.get("mode").and_then(|v| v.as_str()).unwrap_or("user");
+                            let exec_mode = ExecutionMode::from_str(mode_str).unwrap_or(ExecutionMode::User);
+                            let report = safety_guard.audit_with_mode(code, exec_mode);
 
                             json!({
                                 "content": [{
@@ -227,6 +253,53 @@ pub async fn run_mcp_server() -> Result<(), Box<dyn std::error::Error>> {
                                     "text": serde_json::to_string_pretty(&report).unwrap_or_default()
                                 }]
                             })
+                        }
+                        "asm_assemble" => {
+                            let code = arguments.get("code").and_then(|v| v.as_str()).unwrap_or("");
+                            match assemble(code) {
+                                Ok(bytes) => {
+                                    let hex = bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+                                    json!({
+                                        "content": [{
+                                            "type": "text",
+                                            "text": serde_json::to_string_pretty(&json!({
+                                                "byte_count": bytes.len(),
+                                                "hex": hex,
+                                                "bytes": bytes
+                                            })).unwrap_or_default()
+                                        }]
+                                    })
+                                }
+                                Err(e) => json!({
+                                    "isError": true,
+                                    "content": [{ "type": "text", "text": format!("Assembly error: {}", e) }]
+                                }),
+                            }
+                        }
+                        "asm_template" => {
+                            let name = arguments.get("name").and_then(|v| v.as_str()).unwrap_or("list");
+                            if name == "list" || name.is_empty() {
+                                let list = templates::list_templates();
+                                json!({
+                                    "content": [{
+                                        "type": "text",
+                                        "text": serde_json::to_string_pretty(&list).unwrap_or_default()
+                                    }]
+                                })
+                            } else {
+                                match templates::get_template(name) {
+                                    Some(tpl) => json!({
+                                        "content": [{
+                                            "type": "text",
+                                            "text": serde_json::to_string_pretty(&tpl).unwrap_or_default()
+                                        }]
+                                    }),
+                                    None => json!({
+                                        "isError": true,
+                                        "content": [{ "type": "text", "text": format!("Template '{}' not found. Available: baremetal-uart, kernel-isr, spinlock, bignum-math, standalone-cli", name) }]
+                                    }),
+                                }
+                            }
                         }
                         "asm_query" => {
                             let query = arguments.get("query").and_then(|v| v.as_str()).unwrap_or("");

@@ -13,12 +13,7 @@ extrn system: PROC
     cursor_y dd 0
     num_rows dd 0
     
-    ; We have a simple array of lines.
-    ; Say 100 lines, each 80 chars max + 1 byte for length.
-    ; Actually, simpler: a 1D array of characters, we just use a fixed 80x25 grid = 2000 bytes.
-    ; 80 columns, 25 rows.
-    MAX_COLS equ 80
-    MAX_ROWS equ 25
+    ; 80 columns, 25 rows = 2000 bytes
     text_buffer db 2000 dup(' ')
     
     ; Escape sequences
@@ -29,8 +24,7 @@ extrn system: PROC
     mode_w db "wb", 0
     mode_r db "rb", 0
     
-    dbg_msg db "Key: %d", 13, 10, 0
-    newline db 13, 10, 0
+    fmt_row db "%.80s", 13, 10, 0
     
 .code
 main PROC
@@ -44,8 +38,6 @@ main PROC
     lea rcx, clear_screen
     call printf
     
-    ; TODO: read from out.txt if it exists
-
 main_loop:
     call draw_screen
     
@@ -187,14 +179,14 @@ do_save:
     jmp main_loop
 
 do_exit:
+    mov ecx, 0
+    call ExitProcess
     add rsp, 40
     pop rsi
     pop rdi
     pop rbp
     pop rbx
-    mov ecx, 0
-    call ExitProcess
-
+    ret
 main ENDP
 
 draw_screen PROC
@@ -208,11 +200,6 @@ draw_screen PROC
     ; Print the whole buffer row by row
     mov ebx, 0 ; row = 0
 draw_loop:
-    ; But we can't define "%.80s\r\n" easily here. Let's add it to data.
-    jmp after_fmt
-fmt_row db "%.80s", 13, 10, 0
-after_fmt:
-    
     lea rcx, fmt_row
     lea rdx, text_buffer
     mov eax, ebx

@@ -1,4 +1,4 @@
-﻿use iced_x86::{Decoder, DecoderOptions, FlowControl, Instruction, Mnemonic, OpKind, Register};
+use iced_x86::{Decoder, DecoderOptions, FlowControl, Instruction, Mnemonic, OpKind, Register};
 use crate::types::{CpuRegisters, FlagDiff, RegisterDiff, Syntax, TraceStep};
 use crate::assembler::iced_backend::disassemble_x86_64;
 use std::collections::HashMap;
@@ -130,6 +130,56 @@ impl StepTracer {
                 self.registers.flags.cf = false;
                 self.registers.flags.of = false;
             }
+            Mnemonic::Adc => {
+                let op0 = self.get_op_val(instr, 0)?;
+                let op1 = self.get_op_val(instr, 1)?;
+                let carry_in = if self.registers.flags.cf { 1u64 } else { 0u64 };
+                let (res1, c1) = op0.overflowing_add(op1);
+                let (res, c2) = res1.overflowing_add(carry_in);
+                self.set_op_val(instr, 0, res, mem_writes)?;
+                self.registers.flags.cf = c1 || c2;
+                self.registers.flags.zf = res == 0;
+                self.registers.flags.sf = (res as i64) < 0;
+                self.registers.flags.of = ((op0 ^ res) & (op1 ^ res) & 0x8000000000000000) != 0;
+            }
+            Mnemonic::Sbb => {
+                let op0 = self.get_op_val(instr, 0)?;
+                let op1 = self.get_op_val(instr, 1)?;
+                let borrow_in = if self.registers.flags.cf { 1u64 } else { 0u64 };
+                let (res1, b1) = op0.overflowing_sub(op1);
+                let (res, b2) = res1.overflowing_sub(borrow_in);
+                self.set_op_val(instr, 0, res, mem_writes)?;
+                self.registers.flags.cf = b1 || b2;
+                self.registers.flags.zf = res == 0;
+                self.registers.flags.sf = (res as i64) < 0;
+                self.registers.flags.of = ((op0 ^ op1) & (op0 ^ res) & 0x8000000000000000) != 0;
+            }
+            Mnemonic::Xchg => {
+                let v0 = self.get_op_val(instr, 0)?;
+                let v1 = self.get_op_val(instr, 1)?;
+                self.set_op_val(instr, 0, v1, mem_writes)?;
+                self.set_op_val(instr, 1, v0, mem_writes)?;
+            }
+            Mnemonic::Bswap => {
+                let val = self.get_op_val(instr, 0)?;
+                self.set_op_val(instr, 0, val.swap_bytes(), mem_writes)?;
+            }
+            Mnemonic::Clc => {
+                self.registers.flags.cf = false;
+            }
+            Mnemonic::Stc => {
+                self.registers.flags.cf = true;
+            }
+            Mnemonic::Cmc => {
+                self.registers.flags.cf = !self.registers.flags.cf;
+            }
+            Mnemonic::Cld => {
+                self.registers.flags.df = false;
+            }
+            Mnemonic::Std => {
+                self.registers.flags.df = true;
+            }
+            Mnemonic::Pause => {}
             Mnemonic::Add => {
                 let op0 = self.get_op_val(instr, 0)?;
                 let op1 = self.get_op_val(instr, 1)?;

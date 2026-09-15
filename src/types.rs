@@ -57,11 +57,38 @@ impl std::str::FromStr for Syntax {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ExecutionMode {
+    User,
+    Kernel,
+    BareMetal,
+}
+
+impl Default for ExecutionMode {
+    fn default() -> Self {
+        Self::User
+    }
+}
+
+impl std::str::FromStr for ExecutionMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "user" | "app" | "userspace" => Ok(ExecutionMode::User),
+            "kernel" | "driver" | "kmd" | "sys" => Ok(ExecutionMode::Kernel),
+            "baremetal" | "embedded" | "firmware" | "freestanding" => Ok(ExecutionMode::BareMetal),
+            other => Err(format!("Unknown execution mode: {}. Expected 'user', 'kernel', or 'baremetal'", other)),
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CallingConvention {
     SystemV_AMD64,
     Windows_X64,
+    Windows_Kernel,
+    Linux_Kernel,
     Arm64_AAPCS,
     Riscv_LP64,
 }
@@ -72,6 +99,8 @@ impl std::str::FromStr for CallingConvention {
         match s.to_lowercase().as_str() {
             "sysv" | "systemv" | "linux" | "elf" | "sysv_amd64" => Ok(CallingConvention::SystemV_AMD64),
             "win64" | "windows" | "ms64" | "windows_x64" | "win_x64" | "msvc" => Ok(CallingConvention::Windows_X64),
+            "win_kernel" | "windows_kernel" | "ntoskrnl" | "wdm" | "kmdf" => Ok(CallingConvention::Windows_Kernel),
+            "linux_kernel" | "kmod" => Ok(CallingConvention::Linux_Kernel),
             "arm64" | "aapcs" | "aapcs64" | "arm64_aapcs" => Ok(CallingConvention::Arm64_AAPCS),
             "riscv" | "lp64" | "riscv_lp64" | "rv64" => Ok(CallingConvention::Riscv_LP64),
             other => Err(format!("Unknown calling convention: {}", other)),

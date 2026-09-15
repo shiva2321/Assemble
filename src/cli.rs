@@ -9,7 +9,8 @@ use crate::assembler::{assemble, disassemble};
 use crate::emulator::StepTracer;
 use crate::fixer::AssemblyAutoFixer;
 use crate::safety::SafetyGuardrails;
-use crate::types::{Arch, CallingConvention, Severity, Syntax};
+use crate::templates;
+use crate::types::{Arch, CallingConvention, ExecutionMode, Severity, Syntax};
 use crate::util::read_input_or_file;
 
 #[derive(Parser, Debug)]
@@ -58,6 +59,31 @@ pub enum Commands {
     Audit {
         /// Assembly file path, inline string, or '-' for stdin
         input: String,
+        /// Execution context mode: user, kernel, baremetal (default: user)
+        #[arg(short, long, default_value = "user")]
+        mode: String,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Assemble assembly code into raw machine code bytes and hex
+    Asm {
+        /// Assembly file path, inline string, or '-' for stdin
+        input: String,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Generate production assembly scaffolding (drivers, ISRs, spinlocks, bignum, standalone apps)
+    Template {
+        /// Template name (baremetal-uart, kernel-isr, spinlock, bignum-math, standalone-cli) or 'list'
+        #[arg(default_value = "list")]
+        name: String,
+        /// Output file path to write template code into
+        #[arg(short, long)]
+        out: Option<String>,
         /// Output results as JSON
         #[arg(long)]
         json: bool,
@@ -201,15 +227,16 @@ pub async fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        Commands::Audit { input, json } => {
+        Commands::Audit { input, mode, json } => {
             let code = read_input_or_file(&input);
+            let exec_mode = ExecutionMode::from_str(&mode).unwrap_or(ExecutionMode::User);
             let guard = SafetyGuardrails::new();
-            let report = guard.audit(&code);
+            let report = guard.audit_with_mode(&code, exec_mode);
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
-                println!("\n{}", "=== Assemble Absolute Safety Guardrail Audit ===".bold().cyan());
+                println!("\n{}", format!("=== Assemble Absolute Safety Guardrail Audit [{:?}] ===", exec_mode).bold().cyan());
                 let status_badge = match report.overall_risk {
                     crate::safety::SafetyRiskLevel::Safe => " VERIFIED SAFE ".on_green().black().bold(),
                     crate::safety::SafetyRiskLevel::Caution => " CAUTION ".on_yellow().black().bold(),
@@ -225,6 +252,68 @@ pub async fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                         println!("[Line {}] Category: {} | Instruction: '{}'", f.line, f.category.bold(), f.instruction);
                         println!("   Hazard:     {}", f.description);
                         println!("   Mitigation: {}\n", f.mitigation.green());
+                    }
+                }
+            }
+        }
+
+        Commands::Asm { input, json } => {
+            let code = read_input_or_file(&input);
+            match assemble(&code) {
+                Ok(bytes) => {
+                    let hex_str = bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+                    if json {
+                        let obj = serde_json::json!({
+                            "byte_count": bytes.len(),
+                            "hex": hex_str,
+                            "bytes": bytes
+                        });
+                        println!("{}", serde_json::to_string_pretty(&obj)?);
+                    } else {
+                        println!("\n{}", "=== Assemble Machine Code Generation ===".bold().cyan());
+                        println!("Generated {} machine code bytes:", bytes.len().to_string().bold().green());
+                        println!("  Hex:       {}", hex_str.yellow());
+                        println!("  Formatted: {}", bytes.iter().map(|b| format!("0x{:02X}", b)).collect::<Vec<_>>().join(", ").cyan());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{} {}", "Assembly Error:".bold().red(), e);
+                }
+            }
+        }
+
+        Commands::Template { name, out, json } => {
+            if name == "list" {
+                let list = templates::list_templates();
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&list)?);
+                } else {
+                    println!("\n{}", "=== Assemble Production Template Scaffolding ===".bold().cyan());
+                    for t in list {
+                        println!("\n{} [{}]", t.name.bold().green(), t.arch.cyan());
+                        println!("  {}", t.description);
+                        println!("  Category: {}", t.category.yellow());
+                    }
+                    println!("\nUsage: assemble template <name> [-o output.asm]");
+                }
+            } else {
+                match templates::get_template(&name) {
+                    Some(tpl) => {
+                        if json {
+                            println!("{}", serde_json::to_string_pretty(&tpl)?);
+                        } else {
+                            if let Some(ref out_path) = out {
+                                fs::write(out_path, &tpl.code)?;
+                                println!("\n{}", format!("✓ Successfully wrote template '{}' to {}", tpl.name, out_path).bold().green());
+                            } else {
+                                println!("\n{} [{}] - {}", tpl.name.bold().green(), format!("{:?}", tpl.arch).cyan(), tpl.description);
+                                println!("{}", "--- Source Code ---".dimmed());
+                                println!("{}", tpl.code);
+                            }
+                        }
+                    }
+                    None => {
+                        eprintln!("Unknown template '{}'. Run 'assemble template list' to see available templates.", name);
                     }
                 }
             }

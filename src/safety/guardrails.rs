@@ -1,6 +1,8 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::types::ExecutionMode;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SafetyRiskLevel {
     Safe,
@@ -41,6 +43,10 @@ impl SafetyGuardrails {
     }
 
     pub fn audit(&self, assembly_code: &str) -> SafetyReport {
+        self.audit_with_mode(assembly_code, ExecutionMode::User)
+    }
+
+    pub fn audit_with_mode(&self, assembly_code: &str, mode: ExecutionMode) -> SafetyReport {
         let mut findings = Vec::new();
         let lines: Vec<&str> = assembly_code.lines().collect();
 
@@ -52,9 +58,16 @@ impl SafetyGuardrails {
         let re_pop = Regex::new(r"(?i)^\s*pop\s+([a-z0-9]+)").unwrap();
         let re_large_stack = Regex::new(r"(?i)^\s*sub\s+(rsp|esp),\s*(0x[0-9a-fA-F]+|\d+)").unwrap();
         let re_div = Regex::new(r"(?i)^\s*(div|idiv)\s+([a-z0-9]+)").unwrap();
+        let re_pause = Regex::new(r"(?i)^\s*pause\b").unwrap();
+        let re_cli = Regex::new(r"(?i)^\s*cli\b").unwrap();
+        let re_sti = Regex::new(r"(?i)^\s*(sti|popf|popfq)\b").unwrap();
+        let re_ret = Regex::new(r"(?i)^\s*ret\b").unwrap();
+        let re_spin_branch = Regex::new(r"(?i)^\s*(jmp|jnz|jz|je|jne)\s+\.?([a-zA-Z0-9_]+)").unwrap();
 
         let mut nop_streak = 0;
         let mut prev_was_getpc = false;
+        let mut cli_line: Option<usize> = None;
+        let mut had_pause = false;
 
         for (i, line) in lines.iter().enumerate() {
             let line_num = i + 1;
@@ -64,17 +77,56 @@ impl SafetyGuardrails {
                 continue;
             }
 
-            // 1. Privileged Instruction Guard
+            // 1. Privileged Instruction Guard (Context Aware)
             if let Some(caps) = re_privileged.captures(trimmed) {
                 let instr = caps[1].to_uppercase();
-                findings.push(SafetyFinding {
-                    category: "PRIVILEGED_INSTRUCTION".into(),
-                    risk_level: SafetyRiskLevel::Dangerous,
-                    line: line_num,
-                    instruction: trimmed.to_string(),
-                    description: format!("'{}' is a privileged Ring 0 instruction. Executing this in user-space will immediately trigger a General Protection Fault (#GP).", instr),
-                    mitigation: "Remove privileged instruction or implement via OS kernel driver API.".into(),
-                });
+                if mode == ExecutionMode::User {
+                    findings.push(SafetyFinding {
+                        category: "PRIVILEGED_INSTRUCTION".into(),
+                        risk_level: SafetyRiskLevel::Dangerous,
+                        line: line_num,
+                        instruction: trimmed.to_string(),
+                        description: format!("'{}' is a privileged Ring 0 instruction. Executing this in user-space will immediately trigger a General Protection Fault (#GP).", instr),
+                        mitigation: "Remove privileged instruction or compile in kernel/driver mode (--mode kernel).".into(),
+                    });
+                }
+            }
+
+            // Kernel-specific interrupt tracking
+            if mode != ExecutionMode::User {
+                if re_cli.is_match(trimmed) {
+                    cli_line = Some(line_num);
+                } else if re_sti.is_match(trimmed) {
+                    cli_line = None;
+                } else if re_ret.is_match(trimmed) && cli_line.is_some() {
+                    let prev_cli = cli_line.unwrap();
+                    findings.push(SafetyFinding {
+                        category: "CLI_WITHOUT_STI".into(),
+                        risk_level: SafetyRiskLevel::HighRisk,
+                        line: line_num,
+                        instruction: trimmed.to_string(),
+                        description: format!("Function returns with 'ret' while CPU interrupts remain disabled by 'cli' on line {}.", prev_cli),
+                        mitigation: "Ensure interrupts are restored before returning: add 'sti' or 'popfq' before 'ret'.".into(),
+                    });
+                }
+
+                if re_pause.is_match(trimmed) {
+                    had_pause = true;
+                }
+
+                if let Some(caps) = re_spin_branch.captures(trimmed) {
+                    let target = caps[2].to_lowercase();
+                    if (target.contains("spin") || target.contains("wait") || target.contains("loop") || target.contains("lock")) && !had_pause {
+                        findings.push(SafetyFinding {
+                            category: "SPINLOCK_WITHOUT_PAUSE".into(),
+                            risk_level: SafetyRiskLevel::Caution,
+                            line: line_num,
+                            instruction: trimmed.to_string(),
+                            description: "Driver spinlock / busy-wait loop detected without hardware 'pause' instruction.".into(),
+                            mitigation: "Insert 'pause' inside the spin loop to prevent processor memory-order violations and pipeline thrashing.".into(),
+                        });
+                    }
+                }
             }
 
             // 2. NOP Sled Heuristic (Buffer overflow / shellcode pattern)

@@ -125,6 +125,43 @@ fn populate_calling_conventions(kg: &mut KnowledgeGraph) {
             "Division by zero does NOT cause an exception in RISC-V: 'div' returns -1, 'rem' returns dividend.".into(),
         ],
     });
+
+    kg.add_calling_convention(CallingConventionNode {
+        id: CallingConvention::Windows_Kernel,
+        name: "Microsoft Windows Kernel / Driver Calling Convention".into(),
+        arch: Arch::X86_64,
+        arg_registers: vec!["rcx".into(), "rdx".into(), "r8".into(), "r9".into()],
+        float_arg_registers: vec!["xmm0".into(), "xmm1".into(), "xmm2".into(), "xmm3".into()],
+        return_registers: vec!["rax".into()],
+        callee_saved_registers: vec!["rbx".into(), "rbp".into(), "rdi".into(), "rsi".into(), "rsp".into(), "r12".into(), "r13".into(), "r14".into(), "r15".into()],
+        caller_saved_registers: vec!["rax".into(), "rcx".into(), "rdx".into(), "r8".into(), "r9".into(), "r10".into(), "r11".into()],
+        stack_alignment_bytes: 16,
+        shadow_space_bytes: 32,
+        red_zone_bytes: 0,
+        rules_and_traps: vec![
+            "Kernel mode requires strict 16-byte stack alignment. Misalignment causes BugCheck / BSOD!".into(),
+            "Mandatory 32-byte shadow space must be allocated by caller.".into(),
+            "Float/vector registers (XMM/YMM) MUST NOT be used in kernel mode without KeSaveExtendedProcessorState!".into(),
+        ],
+    });
+
+    kg.add_calling_convention(CallingConventionNode {
+        id: CallingConvention::Linux_Kernel,
+        name: "Linux Kernel Module x86_64 Calling Convention".into(),
+        arch: Arch::X86_64,
+        arg_registers: vec!["rdi".into(), "rsi".into(), "rdx".into(), "rcx".into(), "r8".into(), "r9".into()],
+        float_arg_registers: vec![],
+        return_registers: vec!["rax".into(), "rdx".into()],
+        callee_saved_registers: vec!["rbx".into(), "rsp".into(), "rbp".into(), "r12".into(), "r13".into(), "r14".into(), "r15".into()],
+        caller_saved_registers: vec!["rax".into(), "rcx".into(), "rdx".into(), "rsi".into(), "rdi".into(), "r8".into(), "r9".into(), "r10".into(), "r11".into()],
+        stack_alignment_bytes: 16,
+        shadow_space_bytes: 0,
+        red_zone_bytes: 0,
+        rules_and_traps: vec![
+            "No Red Zone in Linux Kernel: -mno-red-zone is strictly required because interrupts use the kernel stack!".into(),
+            "Floating point / vector registers are prohibited unless wrapped in kernel_fpu_begin() / kernel_fpu_end().".into(),
+        ],
+    });
 }
 
 fn populate_instructions(kg: &mut KnowledgeGraph) {
@@ -322,6 +359,133 @@ fn populate_instructions(kg: &mut KnowledgeGraph) {
             "MANDATORY: Must be executed before leaving any AVX function (before RET) or calling legacy SSE functions.".into(),
         ],
     });
+
+    kg.add_instruction(InstructionNode {
+        mnemonic: "in".into(),
+        arch: Arch::X86_64,
+        summary: "Read data from an I/O hardware port into accumulator (AL, AX, EAX).".into(),
+        syntax_forms: vec!["in al, dx".into(), "in eax, dx".into(), "in al, imm8".into()],
+        flags_read: vec![],
+        flags_written: vec![],
+        flags_undefined: vec![],
+        implicit_registers_read: vec!["dx".into()],
+        implicit_registers_written: vec!["al".into(), "eax".into()],
+        latency_cycles: Some(100.0),
+        throughput_cycles: None,
+        extension: "Base".into(),
+        traps_and_pitfalls: vec![
+            "Privileged Ring 0 instruction or requires IOPL / TSS I/O permission bitmap.".into(),
+            "DX register holds the 16-bit port number (0x0000 - 0xFFFF).".into(),
+        ],
+    });
+
+    kg.add_instruction(InstructionNode {
+        mnemonic: "out".into(),
+        arch: Arch::X86_64,
+        summary: "Write data from accumulator (AL, AX, EAX) out to an I/O hardware port.".into(),
+        syntax_forms: vec!["out dx, al".into(), "out dx, eax".into(), "out imm8, al".into()],
+        flags_read: vec![],
+        flags_written: vec![],
+        flags_undefined: vec![],
+        implicit_registers_read: vec!["dx".into(), "al".into(), "eax".into()],
+        implicit_registers_written: vec![],
+        latency_cycles: Some(100.0),
+        throughput_cycles: None,
+        extension: "Base".into(),
+        traps_and_pitfalls: vec![
+            "Privileged Ring 0 instruction or requires IOPL / TSS I/O permission bitmap.".into(),
+        ],
+    });
+
+    kg.add_instruction(InstructionNode {
+        mnemonic: "cli".into(),
+        arch: Arch::X86_64,
+        summary: "Clear Interrupt Flag (IF). Disables maskable external hardware interrupts.".into(),
+        syntax_forms: vec!["cli".into()],
+        flags_read: vec![],
+        flags_written: vec!["IF".into()],
+        flags_undefined: vec![],
+        implicit_registers_read: vec![],
+        implicit_registers_written: vec![],
+        latency_cycles: Some(12.0),
+        throughput_cycles: None,
+        extension: "Base".into(),
+        traps_and_pitfalls: vec![
+            "Privileged Ring 0 instruction. Must be re-enabled with 'sti' or 'popfq' before returning!".into(),
+        ],
+    });
+
+    kg.add_instruction(InstructionNode {
+        mnemonic: "sti".into(),
+        arch: Arch::X86_64,
+        summary: "Set Interrupt Flag (IF). Enables maskable external hardware interrupts.".into(),
+        syntax_forms: vec!["sti".into()],
+        flags_read: vec![],
+        flags_written: vec!["IF".into()],
+        flags_undefined: vec![],
+        implicit_registers_read: vec![],
+        implicit_registers_written: vec![],
+        latency_cycles: Some(12.0),
+        throughput_cycles: None,
+        extension: "Base".into(),
+        traps_and_pitfalls: vec![
+            "Takes effect after the instruction immediately following STI (interrupt shadow).".into(),
+        ],
+    });
+
+    kg.add_instruction(InstructionNode {
+        mnemonic: "iretq".into(),
+        arch: Arch::X86_64,
+        summary: "64-Bit Interrupt Return. Atomically restores RIP, CS, RFLAGS, RSP, and SS from stack.".into(),
+        syntax_forms: vec!["iretq".into()],
+        flags_read: vec![],
+        flags_written: vec!["CF".into(), "ZF".into(), "SF".into(), "OF".into(), "IF".into(), "DF".into()],
+        flags_undefined: vec![],
+        implicit_registers_read: vec!["rsp".into()],
+        implicit_registers_written: vec!["rip".into(), "cs".into(), "rsp".into(), "ss".into()],
+        latency_cycles: Some(30.0),
+        throughput_cycles: None,
+        extension: "Base".into(),
+        traps_and_pitfalls: vec![
+            "Stack pointer must be pointed at the 5-quadword hardware interrupt frame (RIP, CS, RFLAGS, RSP, SS).".into(),
+        ],
+    });
+
+    kg.add_instruction(InstructionNode {
+        mnemonic: "mfence".into(),
+        arch: Arch::X86_64,
+        summary: "Memory Fence. Serializes all load and store operations occurring before the fence.".into(),
+        syntax_forms: vec!["mfence".into()],
+        flags_read: vec![],
+        flags_written: vec![],
+        flags_undefined: vec![],
+        implicit_registers_read: vec![],
+        implicit_registers_written: vec![],
+        latency_cycles: Some(33.0),
+        throughput_cycles: None,
+        extension: "SSE2".into(),
+        traps_and_pitfalls: vec![
+            "Essential for MMIO device register writes to guarantee hardware command sequencing.".into(),
+        ],
+    });
+
+    kg.add_instruction(InstructionNode {
+        mnemonic: "pause".into(),
+        arch: Arch::X86_64,
+        summary: "Spin-Loop Hint. Improves spinlock performance and saves core pipeline power.".into(),
+        syntax_forms: vec!["pause".into()],
+        flags_read: vec![],
+        flags_written: vec![],
+        flags_undefined: vec![],
+        implicit_registers_read: vec![],
+        implicit_registers_written: vec![],
+        latency_cycles: Some(14.0),
+        throughput_cycles: None,
+        extension: "Base".into(),
+        traps_and_pitfalls: vec![
+            "Latency increased from ~10 cycles (Skylake) to ~140 cycles (Skylake-X) to reduce thread thrashing.".into(),
+        ],
+    });
 }
 
 fn populate_idioms(kg: &mut KnowledgeGraph) {
@@ -479,6 +643,45 @@ fn populate_idioms(kg: &mut KnowledgeGraph) {
         assembly_arm64: None,
         why_it_matters: "Failing to preserve RSI/RDI on Windows x64 corrupts the caller's state, leading to intermittent and catastrophic crashes.".into(),
         latency_cycles: "Minimal push/pop overhead".into(),
+    });
+
+    kg.add_idiom(IdiomNode {
+        id: "kernel_spinlock_pause".into(),
+        name: "Hardware-Optimized Kernel Spinlock with PAUSE".into(),
+        category: "driver".into(),
+        arch: Arch::X86_64,
+        description: "Atomically acquires a multi-core spinlock using LOCK BTS with local PAUSE busy-wait loop to avoid bus contention.".into(),
+        assembly_intel: ".try_lock:\nlock bts dword [rcx], 0\njnc .acquired\n.spin_wait:\npause\ntest dword [rcx], 1\njnz .spin_wait\njmp .try_lock\n.acquired:\nmfence".into(),
+        assembly_att: None,
+        assembly_arm64: Some("// ARM64 LDREX/STREX or CAS with WFE/SEV".into()),
+        why_it_matters: "PAUSE instruction prevents CPU pipeline memory-order violation stalls and cuts core power consumption during contention.".into(),
+        latency_cycles: "~14-140 cycles per pause iteration".into(),
+    });
+
+    kg.add_idiom(IdiomNode {
+        id: "mmio_write_barrier".into(),
+        name: "Memory-Mapped I/O (MMIO) Sequenced Write Barrier".into(),
+        category: "driver".into(),
+        arch: Arch::X86_64,
+        description: "Enforces strict ordering of device register stores across out-of-order execution pipelines using SFENCE / MFENCE.".into(),
+        assembly_intel: "mov [rdi + 0x00], eax ; write packet descriptor\nmov [rdi + 0x04], edx ; write packet length\nsfence                ; guarantee descriptor is visible before trigger\nmov byte [rdi + 0x08], 1 ; trigger hardware transmission".into(),
+        assembly_att: None,
+        assembly_arm64: Some("dmb oshst // Outer Shareable Store barrier".into()),
+        why_it_matters: "Without memory barriers, modern superscalar CPUs may issue the trigger write before data buffers are committed, crashing hardware.".into(),
+        latency_cycles: "Pipeline flush delay".into(),
+    });
+
+    kg.add_idiom(IdiomNode {
+        id: "x86_64_isr_frame".into(),
+        name: "Interrupt Service Routine (ISR) Stack Alignment & Context Frame".into(),
+        category: "driver".into(),
+        arch: Arch::X86_64,
+        description: "Preserves complete CPU register context, realigns stack to 16-bytes, invokes kernel handler, and executes IRETQ.".into(),
+        assembly_intel: "push rax\npush rbx\npush rcx\npush rdx\npush rsi\npush rdi\npush rbp\npush r8\npush r9\npush r10\npush r11\npush r12\npush r13\npush r14\npush r15\nmov rbp, rsp\nand rsp, -16\nsub rsp, 32\ncall kernel_handler\nmov rsp, rbp\npop r15\n; ... pops ...\npop rax\niretq".into(),
+        assembly_att: None,
+        assembly_arm64: Some("// ARM64 exception entry with STP x0-x30 and ERET".into()),
+        why_it_matters: "Hardware interrupts interrupt arbitrary user or kernel code at any stack alignment. Must re-align and save all volatile/non-volatile registers.".into(),
+        latency_cycles: "~50 cycles context save/restore".into(),
     });
 }
 
